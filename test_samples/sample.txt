@@ -1,0 +1,2 @@
+这是一段无 BOM 的 UTF-8 中文纯文本测试。
+Second line.
