@@ -1,5 +1,2 @@
 build/
-*.o
-*.a
-*.so
 *.DS_Store

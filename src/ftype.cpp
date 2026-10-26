@@ -32,7 +32,7 @@ bool has_bytes(const uint8_t* buf, size_t len, const void* pat, size_t pat_len) 
     return len >= pat_len && std::search(buf, buf + len, p, p + pat_len) != buf + len;
 }
 
-// 1. 细分 ZIP 容器 (OFD / UOF / 永中 EIO / OOXML / ODF / EPUB / APK / JAR / IPA / VSDX)
+// 1. 细分 ZIP 容器 (OFD / UOF / EIO / CEBX / NPZ / XLSB / OOXML / ODF / EPUB / APK / AAB / WAR / EAR / XPI / MSIX / JAR / IPA / VSDX)
 FileType classify_zip(const uint8_t* b, size_t n) {
     if (match(b, n, 30, "mimetype", 8)) {
         if (match(b, n, 38, "application/epub+zip", 20)) return {"epub", "application/epub+zip"};
@@ -40,13 +40,17 @@ FileType classify_zip(const uint8_t* b, size_t n) {
         if (match(b, n, 38, "application/vnd.oasis.opendocument.spreadsheet", 46)) return {"ods", "application/vnd.oasis.opendocument.spreadsheet"};
         if (match(b, n, 38, "application/vnd.oasis.opendocument.presentation", 47)) return {"odp", "application/vnd.oasis.opendocument.presentation"};
     }
-    // 中国国家版式文档标准 OFD (GB/T 33190): 根目录固定含 OFD.xml 及 Doc_0/
     if (has_str(b, n, "OFD.xml")) return {"ofd", "application/ofd"};
-    // 永中 Office 集成文档 (.eio / .eiop): 内部含 Yozo_ Office 特征条目或 Workbook_ / Workpg_ 流
     if (has_str(b, n, "Yozo") || has_str(b, n, "yozo") || has_str(b, n, "EIO_")) return {"eio", "application/x-yozo-eio"};
-    // 中文办公软件文档标准 UOF (GB/T 20916): 开放中文电子文档 (uof.xml / uot / uos / uop)
     if (has_str(b, n, "uof.xml") || (has_str(b, n, "content.xml") && has_str(b, n, "uof:"))) return {"uof", "application/vnd.uof"};
-    // OOXML (Word / Excel / PowerPoint / Visio)
+    if (has_str(b, n, "cebx") || has_str(b, n, "CEBX")) return {"cebx", "application/vnd.apabi.cebx"};
+    if (has_str(b, n, ".npy")) return {"npz", "application/x-numpy-npz"};
+    if (has_str(b, n, "BundleConfig.pb")) return {"aab", "application/x-authorware-bin"};
+    if (has_str(b, n, "AppxManifest.xml")) return {"msix", "application/msix"};
+    if (has_str(b, n, "WEB-INF/")) return {"war", "application/java-archive"};
+    if (has_str(b, n, "META-INF/application.xml")) return {"ear", "application/java-archive"};
+    if (has_str(b, n, "mozilla.rsa") || has_str(b, n, "install.rdf")) return {"xpi", "application/x-xpinstall"};
+    if (has_str(b, n, "xl/workbook.bin")) return {"xlsb", "application/vnd.ms-excel.sheet.binary.macroEnabled.12"};
     if (has_str(b, n, "word/")) return {"docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"};
     if (has_str(b, n, "xl/")) return {"xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"};
     if (has_str(b, n, "ppt/")) return {"pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"};
@@ -57,19 +61,15 @@ FileType classify_zip(const uint8_t* b, size_t n) {
     return {"zip", "application/zip"};
 }
 
-// 2. 细分 OLE2 复合文档 (WPS 专用格式 wps/et/dps、永中 eio 及 MS Office doc/xls/ppt/vsd/msg/msi)
-// OLE2 Directory Entry 中的流名称以 UTF-16LE 编码存储
+// 2. 细分 OLE2 复合文档 (WPS 专用 wps/et/dps、永中 eio 及 MS Office doc/xls/ppt/vsd/msg/msi)
 FileType classify_ole2(const uint8_t* b, size_t n) {
-    // 金山 WPS 专属标识流（WPS 文字含 WordDocument + KSOProductBuildVer/WPS 专属流；ET 表格与 DPS 演示亦有专属标识）
     static const uint8_t kWpsDoc[] = {'W',0,'P',0,'S',0,'D',0,'o',0,'c',0,'u',0,'m',0,'e',0,'n',0,'t',0};
     static const uint8_t kWpsEt[]  = {'E',0,'T',0,'W',0,'o',0,'r',0,'k',0,'b',0,'o',0,'o',0,'k',0};
     static const uint8_t kWpsDps[] = {'D',0,'P',0,'S',0,'D',0,'o',0,'c',0,'u',0,'m',0,'e',0,'n',0,'t',0};
     static const uint8_t kKso[]    = {'K',0,'S',0,'O',0,'P',0,'r',0,'o',0,'d',0,'u',0,'c',0,'t',0};
-    // 永中 Office (Yozo/Evermore Integrated Office) OLE2 集成文档流名
     static const uint8_t kYozo1[]  = {'Y',0,'o',0,'z',0,'o',0};
     static const uint8_t kYozo2[]  = {'E',0,'I',0,'O',0,'_',0};
 
-    // 微软 Office 标准流名
     static const uint8_t kWord[]  = {'W',0,'o',0,'r',0,'d',0,'D',0,'o',0,'c',0,'u',0,'m',0,'e',0,'n',0,'t',0};
     static const uint8_t kXls1[]  = {'W',0,'o',0,'r',0,'k',0,'b',0,'o',0,'o',0,'k',0};
     static const uint8_t kXls2[]  = {'B',0,'o',0,'o',0,'k',0};
@@ -77,13 +77,11 @@ FileType classify_ole2(const uint8_t* b, size_t n) {
     static const uint8_t kVisio[] = {'V',0,'i',0,'s',0,'i',0,'o',0,'D',0,'o',0,'c',0,'u',0,'m',0,'e',0,'n',0,'t',0};
     static const uint8_t kMsg[]   = {'_',0,'_',0,'s',0,'u',0,'b',0,'s',0,'t',0,'g',0,'1',0,'.',0,'0',0};
 
-    // 2.1 优先匹配永中 Office 与金山 WPS 专用标识
     if (has_bytes(b, n, kYozo1, sizeof(kYozo1)) || has_bytes(b, n, kYozo2, sizeof(kYozo2))) return {"eio", "application/x-yozo-eio"};
     if (has_bytes(b, n, kWpsDoc, sizeof(kWpsDoc))) return {"wps", "application/vnd.ms-works"};
     if (has_bytes(b, n, kWpsEt, sizeof(kWpsEt)))   return {"et", "application/kset"};
     if (has_bytes(b, n, kWpsDps, sizeof(kWpsDps))) return {"dps", "application/ksdps"};
 
-    // 若同时含有 KSOProductBuildVer 与 Word/Workbook/PowerPoint 流，则判定为金山 wps/et/dps
     bool is_kso = has_bytes(b, n, kKso, sizeof(kKso)) || has_str(b, n, "Kingsoft");
     if (has_bytes(b, n, kWord, sizeof(kWord)))   return is_kso ? FileType{"wps", "application/kswps"} : FileType{"doc", "application/msword"};
     if (has_bytes(b, n, kXls1, sizeof(kXls1)) || has_bytes(b, n, kXls2, sizeof(kXls2)))
@@ -95,7 +93,7 @@ FileType classify_ole2(const uint8_t* b, size_t n) {
     return {"msi", "application/x-ole-storage"};
 }
 
-// 3. 细分 ISO BMFF "ftyp" 容器 (heic / avif / cr3 / m4a / mov / 3gp / mp4)
+// 3. 细分 ISO BMFF "ftyp" 容器 (heic / avif / cr3 / m4a / m4v / mov / 3gp / mp4)
 FileType classify_ftyp(const uint8_t* b, size_t n) {
     if (n < 12) return {"mp4", "video/mp4"};
     if (match(b, n, 8, "heic", 4) || match(b, n, 8, "heix", 4) ||
@@ -103,12 +101,48 @@ FileType classify_ftyp(const uint8_t* b, size_t n) {
     if (match(b, n, 8, "avif", 4) || match(b, n, 8, "avis", 4)) return {"avif", "image/avif"};
     if (match(b, n, 8, "crx ", 4)) return {"cr3", "image/x-canon-cr3"};
     if (match(b, n, 8, "M4A ", 4)) return {"m4a", "audio/mp4"};
+    if (match(b, n, 8, "M4V ", 4)) return {"m4v", "video/x-m4v"};
     if (match(b, n, 8, "qt  ", 4)) return {"mov", "video/quicktime"};
-    if (match(b, n, 8, "3gp", 3))  return {"3gp", "video/3gpp"};
+    if (match(b, n, 8, "3gp", 3) || match(b, n, 8, "3g2", 3)) return {"3gp", "video/3gpp"};
     return {"mp4", "video/mp4"};
 }
 
-// 4. 校验合法 UTF-8 / ASCII（容忍缓冲区末尾定长截断的多字节字符）
+// 4. 细分 ELF 二进制类型 (AppImage / 可执行文件 elf / 动态库 so / 目标文件 o / 核心转储 core)
+FileType classify_elf(const uint8_t* b, size_t n) {
+    if (match(b, n, 8, "AI\x02", 3)) return {"appimage", "application/x-appimage"};
+    if (n >= 18) {
+        bool le = (b[5] != 2);
+        uint16_t e_type = le ? static_cast<uint16_t>(b[16] | (b[17] << 8))
+                             : static_cast<uint16_t>((b[16] << 8) | b[17]);
+        if (e_type == 1) return {"o", "application/x-object"};
+        if (e_type == 4) return {"core", "application/x-coredump"};
+        // ET_DYN (3): 若无 PT_INTERP 动态链接器段则为纯共享库 .so，含 PT_INTERP 则为 PIE 可执行文件
+        if (e_type == 3 && !has_str(b, n, "/ld-linux") && !has_str(b, n, "/ld-musl")) {
+            return {"so", "application/x-sharedlib"};
+        }
+    }
+    return {"elf", "application/x-executable"};
+}
+
+// 5. 细分 Windows PE 二进制 (exe / dll / sys)
+FileType classify_pe(const uint8_t* b, size_t n) {
+    if (n >= 0x40) {
+        uint32_t pe_off = static_cast<uint32_t>(b[0x3C]) | (static_cast<uint32_t>(b[0x3D]) << 8) |
+                          (static_cast<uint32_t>(b[0x3E]) << 16) | (static_cast<uint32_t>(b[0x3F]) << 24);
+        if (pe_off + 24 <= n && match(b, n, pe_off, "PE\x00\x00", 4)) {
+            uint16_t chars = static_cast<uint16_t>(b[pe_off + 22] | (b[pe_off + 23] << 8));
+            if (chars & 0x2000) return {"dll", "application/x-msdownload"}; // IMAGE_FILE_DLL
+            // 检查 OptionalHeader Subsystem == 1 (IMAGE_SUBSYSTEM_NATIVE -> .sys 驱动)
+            if (pe_off + 94 <= n) {
+                uint16_t subsys = static_cast<uint16_t>(b[pe_off + 92] | (b[pe_off + 93] << 8));
+                if (subsys == 1) return {"sys", "application/x-ms-driver"};
+            }
+        }
+    }
+    return {"exe", "application/x-msdownload"};
+}
+
+// 6. 校验合法 UTF-8 / ASCII（容忍缓冲区末尾定长截断的多字节字符）
 bool is_valid_utf8_text(const uint8_t* b, size_t n) {
     if (n == 0) return false;
     size_t i = 0;
@@ -142,12 +176,35 @@ bool is_valid_utf8_text(const uint8_t* b, size_t n) {
     return true;
 }
 
-// 5. 文本、数据与编程语言启发式细分
+// 7. 检测 CSV / TSV 表格数据（要求至少 2 行，且前两行逗号或制表符数量一致且 >= 2）
+FileType detect_tabular(const uint8_t* b, size_t n, size_t pos) {
+    for (char sep : {'\t', ','}) {
+        size_t c1 = 0, c2 = 0;
+        bool in_quote = false;
+        size_t i = pos;
+        for (; i < n && b[i] != '\n'; ++i) {
+            if (b[i] == '"') in_quote = !in_quote;
+            else if (!in_quote && b[i] == static_cast<uint8_t>(sep)) ++c1;
+        }
+        if (c1 < 2 || i >= n) continue;
+        ++i;
+        for (; i < n && b[i] != '\n'; ++i) {
+            if (b[i] == '"') in_quote = !in_quote;
+            else if (!in_quote && b[i] == static_cast<uint8_t>(sep)) ++c2;
+        }
+        if (c1 == c2) {
+            return sep == '\t' ? FileType{"tsv", "text/tab-separated-values"} : FileType{"csv", "text/csv"};
+        }
+    }
+    return {"", ""};
+}
+
+// 8. 文本、证书、字幕、CAD 交换、邮件日历、构建配置与编程语言启发式细分
 FileType classify_text(const uint8_t* b, size_t n) {
     size_t pos = match(b, n, 0, "\xEF\xBB\xBF", 3) ? 3 : 0;
     while (pos < n && std::isspace(b[pos])) ++pos;
 
-    // 5.1 Shebang (#!) 细分语言解释器
+    // 8.1 Shebang (#!)
     if (match(b, n, pos, "#!", 2)) {
         size_t eol = pos;
         while (eol < n && b[eol] != '\n' && b[eol] != '\r') ++eol;
@@ -159,27 +216,117 @@ FileType classify_text(const uint8_t* b, size_t n) {
         if (has_str(b + pos, line_len, "perl")) return {"pl", "text/x-perl"};
         if (has_str(b + pos, line_len, "php"))  return {"php", "text/x-php"};
         if (has_str(b + pos, line_len, "lua"))  return {"lua", "text/x-lua"};
+        if (has_str(b + pos, line_len, "pwsh") || has_str(b + pos, line_len, "powershell")) return {"ps1", "application/x-powershell"};
         return {"sh", "text/x-shellscript"};
     }
 
-    // 5.2 标记语言与配置文件
-    if (match_ci(b, n, pos, "<?xml")) {
-        return has_str(b, n, "<svg") ? FileType{"svg", "image/svg+xml"} : FileType{"xml", "application/xml"};
+    // 8.2 证书密钥、出版、CAD、3D、日历通讯录、字幕、邮件、固件 HEX
+    if (match(b, n, pos, "-----BEGIN CERTIFICATE-----", 27)) return {"pem", "application/x-pem-file"};
+    if (match(b, n, pos, "-----BEGIN ", 11) && has_str(b, n, "PRIVATE KEY-----")) return {"key", "application/x-pem-key"};
+    if (match(b, n, pos, "-----BEGIN PGP ", 15)) return {"asc", "application/pgp-keys"};
+    if (match(b, n, pos, "ssh-rsa ", 8) || match(b, n, pos, "ssh-ed25519 ", 12)) return {"pub", "text/plain"};
+    if (match(b, n, pos, "%!PS-Adobe-", 11)) {
+        return has_str(b, n, "EPSF-") ? FileType{"eps", "application/postscript"} : FileType{"ps", "application/postscript"};
+    }
+    if (match(b, n, pos, "0\nSECTION\n", 10) || match(b, n, pos, "0\r\nSECTION\r\n", 12)) return {"dxf", "image/vnd.dxf"};
+    if (match(b, n, pos, "solid ", 6) && has_str(b, n, "facet normal")) return {"stl", "model/stl"};
+    if ((match(b, n, pos, "# ", 2) || match(b, n, pos, "v ", 2) || match(b, n, pos, "mtllib ", 7)) &&
+        has_str(b, n, "\nv ") && has_str(b, n, "\nf ")) return {"obj", "model/obj"};
+    if (match(b, n, pos, "BEGIN:VCALENDAR", 15)) return {"ics", "text/calendar"};
+    if (match(b, n, pos, "BEGIN:VCARD", 11)) return {"vcf", "text/vcard"};
+    if (match(b, n, pos, "WEBVTT", 6)) return {"vtt", "text/vtt"};
+    if ((match(b, n, pos, "1\n00:", 5) || match(b, n, pos, "1\r\n00:", 6)) && has_str(b, n, " --> ")) return {"srt", "application/x-subrip"};
+    if (match(b, n, pos, "Windows Registry Editor", 23) || match(b, n, pos, "REGEDIT4", 8)) return {"reg", "text/x-ms-regedit"};
+    if (match(b, n, pos, "From ", 5) && (has_str(b, n, "\nFrom: ") || has_str(b, n, "\r\nFrom: "))) return {"mbox", "application/mbox"};
+    if ((match_ci(b, n, pos, "From: ") || match_ci(b, n, pos, "Return-Path: ") || match_ci(b, n, pos, "MIME-Version: ")) &&
+        (has_str(b, n, "Subject: ") || has_str(b, n, "Content-Type: "))) {
+        return {"eml", "message/rfc822"};
+    }
+    // Intel HEX 固件 (:10xxxx00... 或 :02000004...)
+    if (b[pos] == ':' && n >= pos + 11 && std::isxdigit(b[pos + 1]) && std::isxdigit(b[pos + 2]) &&
+        (has_str(b, n, ":00000001FF") || match(b, n, pos, ":02000004", 9) || match(b, n, pos, ":10", 3))) {
+        return {"hex", "application/x-intel-hex"};
+    }
+
+    // 8.3 XML 及其衍生格式 (SVG / FB2 电子书 / Plist / Qt UI & QRC / RSS / Atom / OVF / VBOX)
+    if (match_ci(b, n, pos, "<?xml") || match_ci(b, n, pos, "<!doctype")) {
+        if (has_str(b, n, "<svg")) return {"svg", "image/svg+xml"};
+        if (has_str(b, n, "<FictionBook")) return {"fb2", "application/x-fictionbook+xml"};
+        if (has_str(b, n, "<plist") || has_str(b, n, "DTD PLIST")) return {"plist", "application/x-plist"};
+        if (has_str(b, n, "<ui version=")) return {"ui", "application/x-designer"};
+        if (has_str(b, n, "<RCC")) return {"qrc", "application/x-qt-resource"};
+        if (has_str(b, n, "<rss")) return {"rss", "application/rss+xml"};
+        if (has_str(b, n, "<feed") && has_str(b, n, "http://www.w3.org/2005/Atom")) return {"atom", "application/atom+xml"};
+        if (has_str(b, n, "<Envelope") && has_str(b, n, "ovf")) return {"ovf", "application/x-ovf"};
+        if (has_str(b, n, "<VirtualBox")) return {"vbox", "application/x-virtualbox-vbox"};
+        if (match_ci(b, n, pos, "<!doctype html")) return {"html", "text/html"};
+        return {"xml", "application/xml"};
     }
     if (match_ci(b, n, pos, "<svg")) return {"svg", "image/svg+xml"};
-    if (match_ci(b, n, pos, "<!doctype html") || match_ci(b, n, pos, "<html")) return {"html", "text/html"};
+    if (match_ci(b, n, pos, "<html")) return {"html", "text/html"};
+    if (match_ci(b, n, pos, "<ui version=")) return {"ui", "application/x-designer"};
+    if (match_ci(b, n, pos, "<RCC")) return {"qrc", "application/x-qt-resource"};
     if (match_ci(b, n, pos, "<?php")) return {"php", "text/x-php"};
     if (match(b, n, pos, "---\n", 4) || match(b, n, pos, "---\r\n", 5)) return {"yaml", "application/x-yaml"};
 
-    // JSON
+    // 8.4 JSON / JSONL (NDJSON) / glTF / HAR / WebManifest
     if (pos < n && (b[pos] == '{' || b[pos] == '[')) {
+        // 检测 JSONL: 第一行以 {...}\n 结束且第二行又以 { 开头
+        if (b[pos] == '{') {
+            size_t eol = pos;
+            while (eol < n && b[eol] != '\n') ++eol;
+            if (eol > pos && eol + 1 < n && (b[eol - 1] == '}' || (eol > pos + 1 && b[eol - 1] == '\r' && b[eol - 2] == '}'))) {
+                size_t next = eol + 1;
+                while (next < n && (b[next] == ' ' || b[next] == '\t')) ++next;
+                if (next < n && b[next] == '{') return {"jsonl", "application/x-ndjson"};
+            }
+        }
         size_t p = pos + 1;
         while (p < n && std::isspace(b[p])) ++p;
-        if (p < n && (b[p] == '"' || b[p] == '}' || b[p] == ']' || b[p] == '{' || b[p] == '['))
+        if (p < n && (b[p] == '"' || b[p] == '}' || b[p] == ']' || b[p] == '{' || b[p] == '[')) {
+            if (has_str(b, n, "\"asset\"") && (has_str(b, n, "\"scenes\"") || has_str(b, n, "\"meshes\"")))
+                return {"gltf", "model/gltf+json"};
+            if (has_str(b, n, "\"log\"") && has_str(b, n, "\"entries\""))
+                return {"har", "application/json"};
+            if (has_str(b, n, "\"short_name\"") && has_str(b, n, "\"start_url\""))
+                return {"webmanifest", "application/manifest+json"};
             return {"json", "application/json"};
+        }
     }
 
-    // 5.3 编程语言语法特征扫描
+    // 8.5 编程语言与配置语法特征扫描
+    // WebAssembly Text (.wat)
+    if (match(b, n, pos, "(module", 7)) return {"wat", "text/wasm"};
+    // Protocol Buffers (.proto)
+    if (has_str(b, n, "syntax = \"proto") || has_str(b, n, "syntax = 'proto")) return {"proto", "text/x-protobuf"};
+    // GraphQL (.graphql)
+    if ((match(b, n, pos, "type ", 5) || match(b, n, pos, "query ", 6) || match(b, n, pos, "mutation ", 9) || match(b, n, pos, "schema ", 7)) &&
+        has_str(b, n, "{") && (has_str(b, n, ": String") || has_str(b, n, ": ID") || has_str(b, n, ": Int"))) {
+        return {"graphql", "application/graphql"};
+    }
+    // Qt QML (.qml)
+    if (match(b, n, pos, "import QtQuick", 14)) return {"qml", "text/x-qml"};
+    // Windows 批处理 (.bat / .cmd)
+    if (match_ci(b, n, pos, "@echo off") || match_ci(b, n, pos, "setlocal ")) return {"bat", "application/x-bat"};
+    // PowerShell (.ps1)
+    if (match_ci(b, n, pos, "param(") || has_str(b, n, "Write-Host ") || has_str(b, n, "$PSVersionTable")) return {"ps1", "application/x-powershell"};
+    // 汇编 (.asm / .s)
+    if (has_str(b, n, ".global ") || has_str(b, n, ".globl ") || has_str(b, n, "section .text") || has_str(b, n, ".intel_syntax")) {
+        return {"asm", "text/x-asm"};
+    }
+    // CUDA (.cu) — 置于 C/C++ #include 检查之前，因为 CUDA 同样常包含 #include
+    if (has_str(b, n, "__global__ ") || has_str(b, n, "__device__ ") || has_str(b, n, "cudaMalloc(")) return {"cu", "text/x-cuda"};
+    // Objective-C (.m)
+    if (has_str(b, n, "#import <") || has_str(b, n, "@interface ") || has_str(b, n, "@implementation ")) return {"m", "text/x-objcsrc"};
+    // C# (.cs)
+    if (has_str(b, n, "using System;") && has_str(b, n, "namespace ")) return {"cs", "text/x-csharp"};
+    // Swift (.swift)
+    if ((has_str(b, n, "import Foundation") || has_str(b, n, "import SwiftUI") || has_str(b, n, "import UIKit")) &&
+        (has_str(b, n, "func ") || has_str(b, n, "struct ") || has_str(b, n, "let "))) return {"swift", "text/x-swift"};
+    // Kotlin (.kt)
+    if (has_str(b, n, "fun main(") || (match(b, n, pos, "package ", 8) && has_str(b, n, "fun ") && has_str(b, n, "val "))) {
+        return {"kt", "text/x-kotlin"};
+    }
     // C / C++
     if (has_str(b, n, "#include <") || has_str(b, n, "#include \"") || has_str(b, n, "#pragma once")) {
         if (has_str(b, n, "namespace ") || has_str(b, n, "template<") || has_str(b, n, "template <") ||
@@ -192,7 +339,7 @@ FileType classify_text(const uint8_t* b, size_t n) {
     if (has_str(b, n, "fn main()") || (has_str(b, n, "pub fn ") && has_str(b, n, "let mut ")) || has_str(b, n, "#[derive(")) {
         return {"rs", "text/x-rust"};
     }
-    // Java (置于 Go 之前，因两者均可由 package + import 开头，但 Java 带分号或 public class)
+    // Java
     if ((has_str(b, n, "public class ") || has_str(b, n, "public interface ") || has_str(b, n, "import java.")) &&
         (has_str(b, n, ";") || has_str(b, n, "public static void main"))) {
         return {"java", "text/x-java-source"};
@@ -201,10 +348,12 @@ FileType classify_text(const uint8_t* b, size_t n) {
     if (match(b, n, pos, "package ", 8) && (has_str(b, n, "func ") || has_str(b, n, "import \"") || has_str(b, n, "import ("))) {
         return {"go", "text/x-go"};
     }
-    // Python
+    // Python / Ruby / Lua
     if (has_str(b, n, "def ") && (has_str(b, n, "import ") || has_str(b, n, "from ") || has_str(b, n, "if __name__"))) {
         return {"py", "text/x-python"};
     }
+    if (has_str(b, n, "require '") && has_str(b, n, "def ") && has_str(b, n, "end\n")) return {"rb", "text/x-ruby"};
+    if (has_str(b, n, "local ") && has_str(b, n, "function ") && has_str(b, n, "end")) return {"lua", "text/x-lua"};
     // TypeScript / JavaScript
     if (has_str(b, n, "interface ") && (has_str(b, n, "export ") || has_str(b, n, ": string") || has_str(b, n, ": number"))) {
         return {"ts", "application/typescript"};
@@ -225,10 +374,22 @@ FileType classify_text(const uint8_t* b, size_t n) {
     if (match(b, n, pos, "# ", 2) && (has_str(b, n, "\n## ") || has_str(b, n, "\n```") || has_str(b, n, "\n- "))) {
         return {"md", "text/markdown"};
     }
-    // INI / TOML 风格配置
+    // VMware VMX
+    if (has_str(b, n, ".encoding =") && has_str(b, n, "virtualHW.version =")) return {"vmx", "application/x-vmware-vmx"};
+    // TOML / INI
     if (b[pos] == '[' && has_str(b, n, "]\n") && has_str(b, n, "=")) {
+        if (has_str(b, n, " = \"") || has_str(b, n, " = [") || has_str(b, n, "[[")) return {"toml", "application/toml"};
         return {"ini", "text/plain"};
     }
+    // .env 环境变量配置 (KEY=VALUE 且键名全大写加下划线)
+    if (std::isupper(b[pos])) {
+        size_t k = pos;
+        while (k < n && (std::isupper(b[k]) || std::isdigit(b[k]) || b[k] == '_')) ++k;
+        if (k > pos + 2 && k < n && b[k] == '=') return {"env", "text/plain"};
+    }
+    // CSV / TSV 表格交换
+    FileType tab = detect_tabular(b, n, pos);
+    if (tab.ext[0] != '\0') return tab;
 
     return {"txt", "text/plain"};
 }
@@ -238,15 +399,20 @@ FileType classify_text(const uint8_t* b, size_t n) {
 FileType detect_bytes(const uint8_t* b, size_t n) {
     if (!b || n == 0) return {"empty", "inode/x-empty"};
 
-    // 1. 图像格式 (PNG / JPG / GIF / WEBP / BMP / TIFF / ICO / PSD / JXL /JP2 / EXR / HDR / DDS / BPG)
+    // 1. 图像与相机 RAW 格式 (PNG / JPG / GIF / WEBP / BMP / CR2 / ORF / RW2 / RAF / DNG / TIFF / ICO / PSD / PSB / JXL / JP2 / EXR / HDR / DDS / BPG)
     if (match(b, n, 0, "\x89PNG\r\n\x1a\n", 8)) return {"png", "image/png"};
     if (match(b, n, 0, "\xFF\xD8\xFF", 3)) return {"jpg", "image/jpeg"};
     if (match(b, n, 0, "GIF87a", 6) || match(b, n, 0, "GIF89a", 6)) return {"gif", "image/gif"};
     if (match(b, n, 0, "RIFF", 4) && match(b, n, 8, "WEBP", 4)) return {"webp", "image/webp"};
     if (match(b, n, 0, "BM", 2)) return {"bmp", "image/bmp"};
+    if (match(b, n, 0, "II*\x00", 4) && match(b, n, 8, "CR\x02\x00", 4)) return {"cr2", "image/x-canon-cr2"};
+    if (match(b, n, 0, "IIRO\x08\x00\x00\x00", 8) || match(b, n, 0, "IIRS\x08\x00\x00\x00", 8)) return {"orf", "image/x-olympus-orf"};
+    if (match(b, n, 0, "IIU\x00", 4)) return {"rw2", "image/x-panasonic-rw2"};
+    if (match(b, n, 0, "FUJIFILMCCD-RAW ", 16)) return {"raf", "image/x-fuji-raf"};
     if (match(b, n, 0, "II*\x00", 4) || match(b, n, 0, "MM\x00*", 4)) return {"tif", "image/tiff"};
     if (match(b, n, 0, "\x00\x00\x01\x00", 4)) return {"ico", "image/x-icon"};
     if (match(b, n, 0, "\x00\x00\x02\x00", 4)) return {"cur", "image/x-win-bitmap"};
+    if (match(b, n, 0, "8BPS\x00\x02", 6)) return {"psb", "image/vnd.adobe.photoshop"};
     if (match(b, n, 0, "8BPS", 4)) return {"psd", "image/vnd.adobe.photoshop"};
     if (match(b, n, 0, "\xFF\x0A", 2) || match(b, n, 0, "\x00\x00\x00\x0CJXL \x0D\x0A\x87\x0A", 12)) return {"jxl", "image/jxl"};
     if (match(b, n, 0, "\x00\x00\x00\x0CjP  \r\n\x87\n", 12)) return {"jp2", "image/jp2"};
@@ -255,13 +421,50 @@ FileType detect_bytes(const uint8_t* b, size_t n) {
     if (match(b, n, 0, "DDS ", 4)) return {"dds", "image/vnd-ms.dds"};
     if (match(b, n, 0, "BPG\xFB", 4)) return {"bpg", "image/bpg"};
 
-    // 2. 文档与 Office (PDF / RTF / OLE2 / ZIP-OOXML-ODF)
+    // 2. 文档、Office、国产文献、电子书与帮助文档 (PDF / RTF / CHM / HLP / CAJ / KDH / CEB / MOBI / DJVU / INDD / OLE2 / ZIP)
     if (match(b, n, 0, "%PDF-", 5)) return {"pdf", "application/pdf"};
     if (match(b, n, 0, "{\\rtf", 5)) return {"rtf", "application/rtf"};
+    if (match(b, n, 0, "ITSF\x03\x00\x00\x00", 8)) return {"chm", "application/vnd.ms-htmlhelp"};
+    if (match(b, n, 0, "\x3F\x5F\x03\x00", 4)) return {"hlp", "application/winhlp"};
+    if (match(b, n, 0, "CAJ", 3) || match(b, n, 0, "HN\x00\x00", 4)) return {"caj", "application/x-caj"};
+    if (match(b, n, 0, "KDH ", 4)) return {"kdh", "application/x-kdh"};
+    if (match(b, n, 0, "Founder Apabi", 13)) return {"ceb", "application/vnd.apabi.ceb"};
+    if (match(b, n, 60, "BOOKMOBI", 8)) return {"mobi", "application/x-mobipocket-ebook"};
+    if (match(b, n, 0, "AT&TFORM", 8) && (match(b, n, 12, "DJVU", 4) || match(b, n, 12, "DJVM", 4))) return {"djvu", "image/vnd.djvu"};
+    if (match(b, n, 0, "\x06\x06\xED\xF5\xD8\x1D\x46\xE5\xBD\x31\xEF\xE7\xFE\x74\xB7\x1D", 16)) return {"indd", "application/x-indesign"};
+    if (match(b, n, 0, "\xC5\xD0\xD3\xC6", 4)) return {"eps", "application/postscript"};
     if (match(b, n, 0, "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1", 8)) return classify_ole2(b, n);
     if (match(b, n, 0, "PK\x03\x04", 4) || match(b, n, 0, "PK\x05\x06", 4)) return classify_zip(b, n);
 
-    // 3. 压缩包、归档与磁盘镜像 (RAR / 7Z / GZ / BZ2 / XZ / ZST / LZ4 / LZO / LZIP / CAB / DEB / RPM / CPIO / AR / TAR / DMG / QCOW2 / VMDK / VHD / VDI / SQUASHFS)
+    // 3. CAD、3D 模型与科研天文地理 (DWG / GLB / BLEND / FBX / 3DS / SHP / FITS)
+    if (match(b, n, 0, "AC10", 4) && n >= 6 && std::isdigit(b[4]) && std::isdigit(b[5])) return {"dwg", "image/vnd.dwg"};
+    if (match(b, n, 0, "glTF", 4)) return {"glb", "model/gltf-binary"};
+    if (match(b, n, 0, "BLENDER", 7)) return {"blend", "application/x-blender"};
+    if (match(b, n, 0, "Kaydara FBX Binary  \x00", 21)) return {"fbx", "application/octet-stream"};
+    if (match(b, n, 0, "\x4D\x4D", 2) && n >= 10 && b[5] == 0x00 && (b[6] == 0x02 || b[6] == 0x3D)) return {"3ds", "image/x-3ds"};
+    if (match(b, n, 0, "\x00\x00\x27\x0A\x00\x00\x00\x00", 8) && match(b, n, 24, "\x00\x00\x03\xE8", 4)) return {"shp", "application/x-esri-shape"};
+    if (match(b, n, 0, "SIMPLE  =                    T", 30)) return {"fits", "image/fits"};
+
+    // 4. 大数据、AI 模型、科学数据与数据库 (Parquet / ORC / Avro / Arrow / HDF5 / NetCDF / NPY / GGUF / SQLite / MDF / Access / Redis / PST / KDBX)
+    if (match(b, n, 0, "PAR1", 4)) return {"parquet", "application/vnd.apache.parquet"};
+    if (match(b, n, 0, "ORC", 3) && n >= 4 && b[3] < 0x20) return {"orc", "application/vnd.apache.orc"};
+    if (match(b, n, 0, "Obj\x01", 4)) return {"avro", "application/vnd.apache.avro"};
+    if (match(b, n, 0, "ARROW1\x00\x00", 8)) return {"arrow", "application/vnd.apache.arrow.file"};
+    if (match(b, n, 0, "FEA1", 4)) return {"feather", "application/vnd.apache.arrow.feather"};
+    if (match(b, n, 0, "\x89HDF\r\n\x1a\n", 8)) return {"h5", "application/x-hdf5"};
+    if (match(b, n, 0, "CDF\x01", 4) || match(b, n, 0, "CDF\x02", 4)) return {"nc", "application/x-netcdf"};
+    if (match(b, n, 0, "\x93NUMPY", 6)) return {"npy", "application/x-numpy-data"};
+    if (match(b, n, 0, "GGUF", 4)) return {"gguf", "application/x-gguf"};
+    if (match(b, n, 0, "SQLite format 3\x00", 16)) return {"sqlite", "application/vnd.sqlite3"};
+    if (match(b, n, 0, "\x01\x0F\x00\x00", 4) && n >= 16) return {"mdf", "application/x-mssql"};
+    if (match(b, n, 4, "Standard Jet DB", 15)) return {"mdb", "application/x-msaccess"};
+    if (match(b, n, 4, "Standard ACE DB", 15)) return {"accdb", "application/x-msaccess"};
+    if (match(b, n, 0, "REDIS00", 7)) return {"rdb", "application/x-redis-rdb"};
+    if (match(b, n, 0, "!BDN", 4)) return {"pst", "application/vnd.ms-outlook-pst"};
+    if (match(b, n, 0, "\x03\xD9\xA2\x9A\x67\xFB\x4B\xB5", 8)) return {"kdbx", "application/x-keepass2"};
+    if (match(b, n, 0, "\x3F\xD7\x6C\x17", 4)) return {"cfs", "application/x-lucene"};
+
+    // 5. 压缩包、安装包与磁盘镜像
     if (match(b, n, 0, "Rar!\x1A\x07\x01\x00", 8) || match(b, n, 0, "Rar!\x1A\x07\x00", 7)) return {"rar", "application/x-rar-compressed"};
     if (match(b, n, 0, "7z\xBC\xAF\x27\x1C", 6)) return {"7z", "application/x-7z-compressed"};
     if (match(b, n, 0, "\x1F\x8B\x08", 3)) return {"gz", "application/gzip"};
@@ -273,6 +476,9 @@ FileType detect_bytes(const uint8_t* b, size_t n) {
     if (match(b, n, 0, "LZIP", 4)) return {"lz", "application/x-lzip"};
     if (match(b, n, 0, "\x1F\x9D", 2) || match(b, n, 0, "\x1F\xA0", 2)) return {"Z", "application/x-compress"};
     if (match(b, n, 0, "MSCF", 4)) return {"cab", "application/vnd.ms-cab-compressed"};
+    if (match(b, n, 0, "MSWIM\x00\x00\x00", 8)) return {"wim", "application/x-ms-wim"};
+    if (match(b, n, 0, "xar!", 4)) return {"xar", "application/x-xar"};
+    if (match(b, n, 0, "Cr24", 4)) return {"crx", "application/x-chrome-extension"};
     if (match(b, n, 0, "!<arch>\ndebian", 14)) return {"deb", "application/vnd.debian.binary-package"};
     if (match(b, n, 0, "!<arch>\n", 8)) return {"a", "application/x-archive"};
     if (match(b, n, 0, "\xED\xAB\xEE\xDB", 4)) return {"rpm", "application/x-rpm"};
@@ -282,40 +488,67 @@ FileType detect_bytes(const uint8_t* b, size_t n) {
     if (match(b, n, 0, "QFI\xFB", 4)) return {"qcow2", "application/x-qemu-disk"};
     if (match(b, n, 0, "KDMV", 4)) return {"vmdk", "application/x-vmdk-disk"};
     if (match(b, n, 0, "conectix", 8)) return {"vhd", "application/x-vhd-disk"};
+    if (match(b, n, 0, "vhdxfile", 8)) return {"vhdx", "application/x-vhdx-disk"};
     if (match(b, n, 0, "<<< Oracle VM VirtualBox Disk Image >>>", 39)) return {"vdi", "application/x-vdi-disk"};
-    // ISO9660 光盘镜像特征位于偏移 0x8001 (32769) 字节处
+    if (match(b, n, 0, "b0VIM ", 6)) return {"swp", "application/x-vim-swap"};
+    if (match(b, n, 0, "ANDROID BACKUP\n", 15)) return {"ab", "application/x-android-backup"};
+    if (match(b, n, 0, "bplist00", 8)) return {"plist", "application/x-bplist"};
+    if (match(b, n, 0, "regf", 4)) return {"hiv", "application/x-ms-registry"};
     if (match(b, n, 0x8001, "CD001", 5) || match(b, n, 0x8801, "CD001", 5) || match(b, n, 0x9001, "CD001", 5)) {
         return {"iso", "application/x-iso9660-image"};
     }
 
-    // 4. 字体 (TTF / OTF / WOFF / WOFF2)
+    // 6. 字体 (TTF / OTF / WOFF / WOFF2)
     if (match(b, n, 0, "\x00\x01\x00\x00\x00", 5)) return {"ttf", "font/ttf"};
     if (match(b, n, 0, "OTTO", 4)) return {"otf", "font/otf"};
     if (match(b, n, 0, "wOFF", 4)) return {"woff", "font/woff"};
     if (match(b, n, 0, "wOF2", 4)) return {"woff2", "font/woff2"};
 
-    // 5. 可执行文件与数据库 (ELF / EXE / Mach-O / Class / DEX / WASM / PYC / SQLite / PCAP)
-    if (match(b, n, 0, "\x7F" "ELF", 4)) return {"elf", "application/x-executable"};
-    if (match(b, n, 0, "MZ", 2)) return {"exe", "application/x-msdownload"};
+    // 7. 可执行文件、库、目标文件、调试符号与抓包 (ELF/SO/O/Core/AppImage, EXE/DLL/SYS, Mach-O, PDB, PYC, WASM, LNK, DMP, EVTX, PCAP, DER)
+    if (match(b, n, 0, "\x7F" "ELF", 4)) return classify_elf(b, n);
+    if (match(b, n, 0, "MZ", 2)) return classify_pe(b, n);
     if (match(b, n, 0, "\xFE\xED\xFA\xCE", 4) || match(b, n, 0, "\xFE\xED\xFA\xCF", 4) ||
         match(b, n, 0, "\xCE\xFA\xED\xFE", 4) || match(b, n, 0, "\xCF\xFA\xED\xFE", 4)) return {"macho", "application/x-mach-binary"};
+    if (match(b, n, 0, "Microsoft C/C++ MSF 7.00\r\n\x1A\x44\x53\x00\x00\x00", 32)) return {"pdb", "application/x-ms-pdb"};
     if (match(b, n, 0, "\xCA\xFE\xBA\xBE", 4)) return {"class", "application/java-vm"};
     if (match(b, n, 0, "dex\n03", 6)) return {"dex", "application/vnd.android.dex"};
     if (match(b, n, 0, "\x00" "asm", 4)) return {"wasm", "application/wasm"};
-    if (match(b, n, 0, "SQLite format 3\x00", 16)) return {"sqlite", "application/vnd.sqlite3"};
+    if (n >= 16 && b[2] == 0x0D && b[3] == 0x0A && b[0] >= 0x42 && b[1] == 0x0D) return {"pyc", "application/x-python-code"};
+    if (match(b, n, 0, "\x4C\x00\x00\x00\x01\x14\x02\x00", 8)) return {"lnk", "application/x-ms-shortcut"};
+    if (match(b, n, 0, "MDMP", 4) || match(b, n, 0, "PAGEDUMP", 8)) return {"dmp", "application/x-dmp"};
+    if (match(b, n, 0, "ElfFile\x00", 8)) return {"evtx", "application/x-ms-evtx"};
     if (match(b, n, 0, "\xD4\xC3\xB2\xA1", 4) || match(b, n, 0, "\xA1\xB2\xC3\xD4", 4)) return {"pcap", "application/vnd.tcpdump.pcap"};
     if (match(b, n, 0, "\x0A\x0D\x0D\x0A", 4)) return {"pcapng", "application/x-pcapng"};
+    // X.509 DER 二进制证书 (ASN.1 SEQUENCE: 0x30 0x82 len_hi len_lo 0x30 0x82)
+    if (n >= 8 && b[0] == 0x30 && b[1] == 0x82 && b[4] == 0x30 && b[5] == 0x82) return {"der", "application/x-x509-ca-cert"};
 
-    // 6. UTF-16 / UTF-32 BOM 文本（置于裸 MP3 帧同步检测前，避免 0xFF 0xFE 冲突）
+    // 8. UTF-16 / UTF-32 BOM 文本（置于裸 MP3 帧同步检测前，避免 0xFF 0xFE 冲突）
     if (match(b, n, 0, "\xFF\xFE\x00\x00", 4) || match(b, n, 0, "\x00\x00\xFE\xFF", 4)) return {"txt", "text/plain; charset=utf-32"};
     if (match(b, n, 0, "\xFF\xFE", 2) || match(b, n, 0, "\xFE\xFF", 2)) return {"txt", "text/plain; charset=utf-16"};
 
-    // 7. 音视频与 ISO BMFF 容器 (WAV / AVI / MP3 / FLAC / OGG / MIDI / FLV / MKV / MP4 / MOV / HEIC / AVIF)
+    // 9. 音视频与流媒体容器 (WAV / AVI / AIFF / DSF / DFF / AMR / APE / WV / ASF(WMV) / MXF / MPG / TS / M2TS / OGG/OPUS/OGV / AAC / MP3 / FLAC / MIDI / FLV / MKV / WEBM / MP4)
     if (match(b, n, 0, "RIFF", 4) && match(b, n, 8, "WAVE", 4)) return {"wav", "audio/x-wav"};
     if (match(b, n, 0, "RIFF", 4) && match(b, n, 8, "AVI ", 4)) return {"avi", "video/x-msvideo"};
+    if (match(b, n, 0, "FORM", 4) && (match(b, n, 8, "AIFF", 4) || match(b, n, 8, "AIFC", 4))) return {"aiff", "audio/x-aiff"};
+    if (match(b, n, 0, "DSD ", 4)) return {"dsf", "audio/x-dsf"};
+    if (match(b, n, 0, "FRM8", 4) && match(b, n, 12, "DSD ", 4)) return {"dff", "audio/x-dff"};
+    if (match(b, n, 0, "#!AMR", 5)) return {"amr", "audio/amr"};
+    if (match(b, n, 0, "MAC ", 4)) return {"ape", "audio/x-ape"};
+    if (match(b, n, 0, "wvpk", 4)) return {"wv", "audio/x-wavpack"};
+    if (match(b, n, 0, "\x30\x26\xB2\x75\x8E\x66\xCF\x11\xA6\xD9\x00\xAA\x00\x62\xCE\x6C", 16)) return {"wmv", "video/x-ms-asf"};
+    if (match(b, n, 0, "\x06\x0E\x2B\x34\x02\x05\x01\x01\x0D\x01\x02\x01\x01\x02", 14)) return {"mxf", "application/mxf"};
+    if (match(b, n, 0, "\x00\x00\x01\xBA", 4) || match(b, n, 0, "\x00\x00\x01\xB3", 4)) return {"mpg", "video/mpeg"};
+    // MPEG-TS 视频流 (.ts): 每 188 字节出现同步字 0x47；BDAV (.m2ts): 每 192 字节偏移 4 处出现 0x47
+    if (n >= 377 && b[0] == 0x47 && b[188] == 0x47 && b[376] == 0x47) return {"ts", "video/mp2t"};
+    if (n >= 389 && b[4] == 0x47 && b[196] == 0x47 && b[388] == 0x47) return {"m2ts", "video/mp2t"};
+    if (n >= 2 && b[0] == 0xFF && (b[1] == 0xF1 || b[1] == 0xF9)) return {"aac", "audio/aac"};
     if (match(b, n, 0, "ID3", 3) || (n >= 2 && b[0] == 0xFF && (b[1] & 0xE0) == 0xE0 && (b[1] & 0x18) != 0x08 && (b[1] & 0x06) != 0)) return {"mp3", "audio/mpeg"};
     if (match(b, n, 0, "fLaC", 4)) return {"flac", "audio/x-flac"};
-    if (match(b, n, 0, "OggS", 4)) return {"ogg", "audio/ogg"};
+    if (match(b, n, 0, "OggS", 4)) {
+        if (match(b, n, 28, "OpusHead", 8)) return {"opus", "audio/opus"};
+        if (match(b, n, 28, "\x80theora", 7)) return {"ogv", "video/ogg"};
+        return {"ogg", "audio/ogg"};
+    }
     if (match(b, n, 0, "MThd", 4)) return {"mid", "audio/midi"};
     if (match(b, n, 0, "FLV\x01", 4)) return {"flv", "video/x-flv"};
     if (match(b, n, 0, "\x1A\x45\xDF\xA3", 4)) {
@@ -324,7 +557,7 @@ FileType detect_bytes(const uint8_t* b, size_t n) {
     }
     if (match(b, n, 4, "ftyp", 4)) return classify_ftyp(b, n);
 
-    // 8. UTF-8 (含或不含 BOM) / ASCII 启发式扫描与源码细分
+    // 10. UTF-8 (含或不含 BOM) / ASCII 启发式扫描与源码细分
     if (match(b, n, 0, "\xEF\xBB\xBF", 3) || is_valid_utf8_text(b, n)) {
         return classify_text(b, n);
     }
@@ -343,7 +576,6 @@ FileType detect_file(const std::string& path) {
     f.seekg(0, std::ios::beg);
     f.read(reinterpret_cast<char*>(buf.data()), head_len);
 
-    // A. ZIP 容器：若前 4KB 未命中特征，跳读末尾 64KB 中央目录
     if (match(buf.data(), buf.size(), 0, "PK\x03\x04", 4)) {
         FileType ft = classify_zip(buf.data(), buf.size());
         if (std::strcmp(ft.ext, "zip") == 0 && size > 4096) {
@@ -356,7 +588,6 @@ FileType detect_file(const std::string& path) {
         return ft;
     }
 
-    // B. OLE2 旧版 Office 容器 (doc/xls/ppt/vsd/msg)：Directory Entry 常在文件后部，读取前 64KB + 后 64KB
     if (match(buf.data(), buf.size(), 0, "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1", 8)) {
         size_t ole_len = static_cast<size_t>(std::min<std::streamsize>(size, 65536));
         std::vector<uint8_t> ole_buf(ole_len);
@@ -373,7 +604,6 @@ FileType detect_file(const std::string& path) {
 
     FileType ft = detect_bytes(buf.data(), buf.size());
 
-    // C. 若前 4KB 未识别出格式：检查 0x8001 处的 ISO9660 光盘签名 "CD001"，以及末尾 512B 的 Apple DMG 签名 "koly"
     if (std::strcmp(ft.ext, "unknown") == 0) {
         if (size > 0x8006) {
             char cd_sig[5] = {0};
