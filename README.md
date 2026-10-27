@@ -90,13 +90,32 @@ int main() {
 
 ## 二、不支持或受限的格式说明（原理性限制）
 
-以下扩展名因**格式规范本身未定义魔数（Magic Bytes）**、**属于无结构裸数据**或**属于同构别名**，无法仅凭文件内容独立区分：
+以下格式受限于**标准规范设计**（无魔数、强随机化、无结构裸流或目录包），无法仅凭文件内容直接独立判定：
 
-| 类别 | 扩展名 | 不支持或归并的具体原因 |
-|------|--------|------------------------|
-| **1. 无魔数压缩/序列化流** | `.br` (Brotli)、`.pb` / `.protobuf` (二进制数据)、`.msgpack` / `.mpk` | **标准规范故意省略文件头魔数**：Brotli、Protobuf Wire Format 与 MessagePack 首个字节直接是可变位流或字段 Tag，不存在固定签名，任意二进制流均可能碰撞。 |
-| **2. 强加密隐写容器** | `.hc` (VeraCrypt / TrueCrypt) | **安全设计防探测**：VeraCrypt 规范要求整个容器文件（含文件头）100% 填充密码学伪随机字节，与随机噪声在数学上不可区分。 |
-| **3. 无固定结构的原始镜像/通用数据** | `.img`、`.raw` (裸扇区镜像/无头相机 RAW)、`.bin`、`.rom`、`.dat`、`.sav`、`.idx`、`.index`、`.tmp`、`.temp`、`.bak` | **非特定格式**：这些后缀代表“任意二进制数据”或“按扇区原样拷贝的裸字节”，取决于产生它的具体程序或分区表，统一返回 `unknown (application/octet-stream)`。 |
-| **4. 文件系统目录伪装包** | `.app` (macOS 应用)、`.dSYM` (macOS 调试符号) | **本质是文件夹（Directory）**，而非单个文件；其内部包含 `Contents/MacOS/` 下的 `macho` 二进制与 `Info.plist`。 |
-| **5. 组合归档后缀** | `.tar.gz` (`.tgz`)、`.tar.bz2` (`.tbz2`)、`.tar.xz` (`.txz`)、`.tar.zst`、`.svgz` | **双层封装**：本库不内置解压引擎，因此识别最外层压缩格式（返回 `gz`、`bz2`、`xz`、`zst`）；解压后再次调用即可识别出内层 `tar` 或 `svg`。 |
-| **6. 完全同构的扩展名别名** | `.jpeg`/`.jpe` → `jpg`<br>`.tiff` → `tif`<br>`.dib` → `bmp`<br>`.heif` → `heic`<br>`.oga` → `ogg`<br>`.aif` → `aiff`<br>`.midi` → `mid`<br>`.mpeg` → `mpg`<br>`.yml` → `yaml`<br>`.ndjson` → `jsonl`<br>`.sqlite3` → `sqlite`<br>`.cer`/`.crt` → `der` 或 `pem`<br>`.pfx` → `p12`<br>`.pgp` → `gpg`<br>`.ical` → `ics`<br>`.appx` → `msix`<br>`.cpl`/`.pyd` → `dll`<br>`.lib` → `a` | **底层字节结构 100% 相同**：同一标准的不同后缀命名，统一返回左侧主扩展名。 |
+### 1. 无魔数压缩 / 序列化位流
+- **涉及后缀**：`.br` (Brotli)、`.pb` / `.protobuf` (二进制数据)、`.msgpack` / `.mpk`
+- **限制原因**：标准规范故意省略固定文件头魔数。Brotli、Protobuf Wire Format 与 MessagePack 首字节直接是变长位流或字段 Tag，不存在全局特征签名，任意二进制流均可能产生碰撞。
+
+### 2. 强加密隐写容器
+- **涉及后缀**：`.hc` (VeraCrypt / TrueCrypt 等)
+- **限制原因**：安全设计要求防探测。VeraCrypt 等规范要求整个容器（含文件头）100% 填充密码学伪随机字节，在数学特征上与纯随机白噪声完全一致。
+
+### 3. 无固定结构的原始镜像与通用数据
+- **涉及后缀**：`.img`、`.raw` (裸扇区镜像/无头相机 RAW)、`.bin`、`.rom`、`.dat`、`.sav`、`.idx`、`.tmp`、`.bak`
+- **限制原因**：代表“任意二进制数据”或“磁盘裸扇区转储”，内容取决于特定程序或分区格式，无统一规范头，统一返回 `unknown (application/octet-stream)`。
+
+### 4. 文件系统目录伪装包
+- **涉及后缀**：`.app` (macOS 应用程序)、`.dSYM` (macOS 调试符号包)
+- **限制原因**：本质是文件系统中的**文件夹（Directory）**而非单个文件。其内部包含 `Contents/MacOS/` 下的 `macho` 二进制文件与 `Info.plist`，应按目录遍历检测其内部可执行文件。
+
+### 5. 双层复合归档
+- **涉及后缀**：`.tar.gz` (`.tgz`)、`.tar.bz2` (`.tbz2`)、`.tar.xz` (`.txz`)、`.tar.zst`、`.svgz`
+- **限制原因**：属于双层嵌套封装。本库为零依赖设计，不集成解压引擎，因此判定最外层压缩格式（返回 `gz` / `bz2` / `xz` / `zst`）；解压后再调用即可精准识别内层 `tar` 或 `svg`。
+
+### 6. 完全同构的扩展名别名（直接归并至主格式）
+同一格式标准的常见别名，底层字节结构 100% 相同，统一归并识别为主扩展名：
+- **图像**：`.jpeg` / `.jpe` → `jpg`；`.tiff` → `tif`；`.dib` → `bmp`；`.heif` → `heic`
+- **音视频**：`.oga` → `ogg`；`.aif` → `aiff`；`.midi` → `mid`；`.mpeg` → `mpg`
+- **配置与数据**：`.yml` → `yaml`；`.ndjson` → `jsonl`；`.sqlite3` → `sqlite`
+- **证书与密钥**：`.cer` / `.crt` → `der` 或 `pem`；`.pfx` → `p12`；`.pgp` → `gpg`
+- **系统与库**：`.ical` → `ics`；`.appx` → `msix`；`.cpl` / `.pyd` → `dll`；`.lib` → `a`
